@@ -1,0 +1,100 @@
+# Import necessary libraries
+import numpy as np
+import tensorflow as tf
+from tensorflow import keras
+from sklearn.preprocessing import ImageDataGenerator
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+# Load and preprocess dataset
+train_dir = 'path/to/train/directory'
+validation_dir = 'path/to/validation/directory'
+
+train_datagen = ImageDataGenerator(rescale=1./255)
+validation_datagen = ImageDataGenerator(rescale=1./255)
+
+train_generator = train_datagen.flow_from_directory(
+    train_dir,
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='categorical'
+)
+
+validation_generator = validation_datagen.flow_from_directory(
+    validation_dir,
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='categorical'
+)
+
+# Define CNN model architecture
+base_model = keras.applications.VGG16(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+
+x = base_model.output
+x = keras.layers.GlobalAveragePooling2D()(x)
+x = keras.layers.Dense(1024, activation='relu')(x)
+x = keras.layers.Dropout(0.2)(x)
+x = keras.layers.Dense(10, activation='softmax')(x)
+
+model = keras.Model(inputs=base_model.input, outputs=x)
+
+# Freeze base model layers and compile model
+for layer in base_model.layers:
+    layer.trainable = False
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Train model with transfer learning
+history = model.fit(
+    train_generator,
+    steps_per_epoch=train_generator.samples // 32,
+    epochs=10,
+    validation_data=validation_generator,
+    validation_steps=validation_generator.samples // 32
+)
+
+# Fine-tune model parameters and hyperparameters
+for layer in model.layers:
+    layer.trainable = True
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+history = model.fit(
+    train_generator,
+    steps_per_epoch=train_generator.samples // 32,
+    epochs=10,
+    validation_data=validation_generator,
+    validation_steps=validation_generator.samples // 32
+)
+
+# Evaluate model performance
+loss, accuracy = model.evaluate(validation_generator)
+print(f'Validation accuracy: {accuracy:.2f}')
+
+# Evaluate model using precision, recall, and F1-score
+y_pred = model.predict(validation_generator)
+y_pred_class = np.argmax(y_pred, axis=1)
+y_true = validation_generator.classes
+
+precision = precision_score(y_true, y_pred_class, average='macro')
+recall = recall_score(y_true, y_pred_class, average='macro')
+f1 = f1_score(y_true, y_pred_class, average='macro')
+
+print(f'Precision: {precision:.2f}')
+print(f'Recall: {recall:.2f}')
+print(f'F1-score: {f1:.2f}')
+
+# Implement techniques to handle overfitting
+model.add(keras.layers.Dropout(0.5))
+
+# Test model on unseen data
+test_dir = 'path/to/test/directory'
+test_datagen = ImageDataGenerator(rescale=1./255)
+test_generator = test_datagen.flow_from_directory(
+    test_dir,
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='categorical'
+)
+
+loss, accuracy = model.evaluate(test_generator)
+print(f'Test accuracy: {accuracy:.2f}')
